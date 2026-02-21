@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>FinanceGPT</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+    :root {
+      --bg:       #080c14;
+      --surface:  #0e1420;
+      --border:   #1a2235;
+      --green:    #00e8a0;
+      --red:      #ff4d6d;
+      --gold:     #ffc847;
+      --blue:     #4d9fff;
+      --muted:    #4a5568;
+      --text:     #c8d6e8;
+      --text-dim: #5a6a80;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo { font-family: 'Space Mono', monospace; color: var(--green); font-size: 1.1rem; font-weight: 700; letter-spacing: 2px; }
+    .logo span { color: var(--text-dim); }
+    .market-status { font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+    /* ── Layout ── */
+    .layout { display: grid; grid-template-columns: 280px 1fr; min-height: calc(100vh - 57px); }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      background: var(--surface); border-right: 1px solid var(--border);
+      padding: 20px; display: flex; flex-direction: column; gap: 20px;
+    }
+
+    .search-label { font-size: 0.7rem; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 6px; }
+
+    .search-wrap { position: relative; }
+    #stockSearch {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 10px 14px;
+      font-size: 0.88rem; font-family: 'DM Sans', sans-serif; outline: none;
+    }
+    #stockSearch:focus { border-color: var(--green); }
+    #stockSearch::placeholder { color: var(--text-dim); }
+
+    .dropdown {
+      position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      max-height: 320px; overflow-y: auto; z-index: 200; display: none;
+    }
+    .dropdown.open { display: block; }
+    .group-hdr {
+      padding: 7px 12px 4px; font-size: 0.65rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 2px; font-weight: 700;
+      background: var(--bg); border-top: 1px solid var(--border); position: sticky; top: 0;
+    }
+    .drop-item { padding: 9px 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+    .drop-item:hover { background: #111928; }
+    .drop-name { font-size: 0.85rem; }
+    .drop-sym  { font-size: 0.72rem; color: var(--green); font-family: 'Space Mono', monospace; }
+
+    /* Selected stock info */
+    .sel-card {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px; display: none;
+    }
+    .sel-card.show { display: block; }
+    .sel-sym  { font-family: 'Space Mono', monospace; color: var(--green); font-size: 1rem; font-weight: 700; }
+    .sel-name { font-size: 0.8rem; color: var(--text-dim); margin-top: 2px; }
+    .sel-tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .tag      { font-size: 0.65rem; padding: 2px 8px; border-radius: 20px; background: #1a2235; color: var(--text-dim); }
+    .tag.green { background: #0a2018; color: var(--green); }
+
+    /* Watchlist */
+    .wl-header { display: flex; align-items: center; justify-content: space-between; }
+    .wl-title  { font-size: 0.7rem; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; }
+    .wl-add    { font-size: 0.72rem; color: var(--green); cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; }
+    .wl-add:hover { opacity: 0.7; }
+
+    .wl-list { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 220px; overflow-y: auto; }
+    .wl-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 10px; background: var(--bg); border-radius: 6px;
+      cursor: pointer; border: 1px solid transparent; font-size: 0.82rem;
+    }
+    .wl-item:hover { border-color: var(--border); }
+    .wl-item.active { border-color: var(--green); }
+    .wl-sym  { font-family: 'Space Mono', monospace; color: var(--green); font-size: 0.75rem; }
+    .wl-del  { color: var(--text-dim); cursor: pointer; font-size: 0.85rem; padding: 0 4px; }
+    .wl-del:hover { color: var(--red); }
+    .wl-empty { font-size: 0.78rem; color: var(--text-dim); text-align: center; padding: 12px; }
+
+    /* ── Main content ── */
+    .main { padding: 24px; overflow-y: auto; }
+
+    /* Tabs */
+    .tabs { display: flex; gap: 6px; margin-bottom: 20px; border-bottom: 1px solid var(--border); padding-bottom: 12px; }
+    .tab  {
+      background: none; border: 1px solid var(--border); color: var(--text-dim);
+      border-radius: 6px; padding: 7px 16px; cursor: pointer; font-size: 0.82rem;
+      font-family: 'DM Sans', sans-serif; transition: all 0.15s;
+    }
+    .tab.active { background: var(--green); color: #080c14; font-weight: 600; border-color: var(--green); }
+
+    /* ── Cards ── */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    .card  {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px;
+    }
+    .card-title { font-size: 0.68rem; color: var(--text-dim); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+
+    /* Stat tiles */
+    .stat-val  { font-family: 'Space Mono', monospace; font-size: 1.4rem; font-weight: 700; }
+    .stat-sub  { font-size: 0.75rem; color: var(--text-dim); margin-top: 3px; }
+
+    /* Badge */
+    .badge { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; font-family: 'Space Mono', monospace; }
+    .badge.green { background: #0a2018; color: var(--green); border: 1px solid #0f3020; }
+    .badge.red   { background: #200a10; color: var(--red);   border: 1px solid #3a0f18; }
+    .badge.gold  { background: #201600; color: var(--gold);  border: 1px solid #3a2800; }
+    .badge.blue  { background: #0a1530; color: var(--blue);  border: 1px solid #0f2040; }
+
+    /* KV table */
+    .kv { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .kv td { padding: 7px 0; border-bottom: 1px solid var(--border); }
+    .kv td:first-child { color: var(--text-dim); }
+    .kv td:last-child  { text-align: right; font-family: 'Space Mono', monospace; font-size: 0.8rem; }
+
+    /* Analyst summary */
+    .verdict-box {
+      border-radius: 10px; padding: 16px; margin-bottom: 16px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .verdict-box.green { background: #0a2018; border: 1px solid #0f3020; }
+    .verdict-box.red   { background: #200a10; border: 1px solid #3a0f18; }
+    .verdict-box.gold  { background: #201600; border: 1px solid #3a2800; }
+    .verdict-big  { font-family: 'Space Mono', monospace; font-size: 1.6rem; font-weight: 700; }
+    .verdict-big.green { color: var(--green); }
+    .verdict-big.red   { color: var(--red); }
+    .verdict-big.gold  { color: var(--gold); }
+    .signals-list { list-style: none; font-size: 0.82rem; color: var(--text-dim); display: flex; flex-direction: column; gap: 4px; }
+    .signals-list li::before { content: "›  "; color: var(--green); }
+
+    /* Chart */
+    .chart-wrap { position: relative; height: 280px; }
+
+    /* 52-week bar */
+    .week52-bar { height: 6px; background: var(--border); border-radius: 3px; margin: 8px 0; position: relative; }
+    .week52-fill { height: 100%; background: linear-gradient(90deg, var(--red), var(--gold), var(--green)); border-radius: 3px; }
+    .week52-marker { position: absolute; top: -4px; width: 14px; height: 14px; background: white; border-radius: 50%; transform: translateX(-50%); }
+
+    /* Compare grid */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .vs-divider   { display: flex; align-items: center; justify-content: center; font-family: 'Space Mono', monospace; color: var(--text-dim); font-size: 0.8rem; }
+
+    /* Action button */
+    .btn {
+      background: var(--green); color: #080c14; border: none; border-radius: 8px;
+      padding: 10px 22px; font-weight: 700; cursor: pointer; font-size: 0.88rem;
+      font-family: 'DM Sans', sans-serif; transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn.ghost {
+      background: none; border: 1px solid var(--border); color: var(--text);
+    }
+    .btn.red { background: var(--red); }
+
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+    input[type="number"], select, .compare-input {
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 9px 14px; font-size: 0.88rem;
+      font-family: 'DM Sans', sans-serif; outline: none;
+    }
+    .compare-input { flex: 1; min-width: 180px; }
+    .compare-input:focus { border-color: var(--green); }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .err { color: var(--red); font-size: 0.85rem; }
+    .loading-msg { color: var(--text-dim); font-size: 0.85rem; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+      .grid2, .grid3 { grid-template-columns: 1fr; }
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Finance<span>GPT</span></div>
+  <div class="market-status"><div class="dot"></div> NSE / BSE  ·  15 min delayed</div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+
+    <div>
+      <div class="search-label">Search Stock</div>
+      <div class="search-wrap">
+        <input id="stockSearch" placeholder="Name or symbol…" autocomplete="off"/>
+        <div class="dropdown" id="dropdown"></div>
+      </div>
+      <div class="sel-card" id="selCard">
+        <div class="sel-sym" id="selSym"></div>
+        <div class="sel-name" id="selName"></div>
+        <div class="sel-tags">
+          <span class="tag green" id="selIndex"></span>
+          <span class="tag" id="selSector"></span>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="wl-header">
+        <div class="wl-title">Watchlist</div>
+        <button class="wl-add" onclick="addToWatchlist()">+ Add</button>
+      </div>
+      <div class="wl-list" id="wlList">
+        <div class="wl-empty">No stocks added yet</div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab" onclick="switchTab('chart')">Chart</button>
+      <button class="tab" onclick="switchTab('predict')">ML Predict</button>
+      <button class="tab" onclick="switchTab('backtest')">Backtest</button>
+      <button class="tab" onclick="switchTab('compare')">Compare</button>
+      <button class="tab" onclick="switchTab('download')">Download</button>
+    </div>
+
+    <!-- Overview -->
+    <div class="section active" id="tab-overview">
+      <div class="row">
+        <button class="btn" onclick="runAnalysis()">Analyse Stock</button>
+      </div>
+      <div id="overview-content"></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="section" id="tab-chart">
+      <div class="row">
+        <select id="chartDays">
+          <option value="90">3 Months</option>
+          <option value="180" selected>6 Months</option>
+          <option value="365">1 Year</option>
+          <option value="730">2 Years</option>
+        </select>
+        <button class="btn" onclick="runChart()">Load Chart</button>
+      </div>
+      <div class="card">
+        <div class="chart-wrap"><canvas id="priceChart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ML Predict -->
+    <div class="section" id="tab-predict">
+      <div class="row">
+        <button class="btn" onclick="runPredict()">Get Prediction</button>
+      </div>
+      <div id="predict-content"></div>
+    </div>
+
+    <!-- Backtest -->
+    <div class="section" id="tab-backtest">
+      <div class="row">
+        <input id="cap-b" type="number" value="100000" style="width:160px;" placeholder="Capital (Rs.)"/>
+        <button class="btn" onclick="runBacktest()">Run Backtest</button>
+      </div>
+      <div id="backtest-content"></div>
+    </div>
+
+    <!-- Compare -->
+    <div class="section" id="tab-compare">
+      <div class="row">
+        <input class="compare-input" id="cmp1" placeholder="Symbol 1  e.g. TCS.NS" value="TCS.NS"/>
+        <input class="compare-input" id="cmp2" placeholder="Symbol 2  e.g. INFY.NS" value="INFY.NS"/>
+        <button class="btn" onclick="runCompare()">Compare</button>
+      </div>
+      <div id="compare-content"></div>
+    </div>
+
+    <!-- Download -->
+    <div class="section" id="tab-download">
+      <div class="row">
+        <select id="per-d">
+          <option value="1y">1 Year</option>
+          <option value="2y">2 Years</option>
+          <option value="5y" selected>5 Years</option>
+          <option value="max">Max</option>
+        </select>
+        <button class="btn" onclick="runDownload()">Download Data</button>
+        <button class="btn ghost" onclick="runTrain()">Re-train Model</button>
+      </div>
+      <div id="download-content"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+const BASE = "http://127.0.0.1:8000";
+let allStocks = [];
+let selectedSymbol = "";
+let selectedName   = "";
+let chartInstance  = null;
+
+// ── Stocks ───────────────────────────────────────────────────────────────────
+async function loadStocks() {
+  try {
+    const res = await fetch(BASE + "/stocks/list");
+    allStocks = await res.json();
+    renderDropdown(allStocks);
+  } catch(e) {}
+}
+
+function renderDropdown(stocks) {
+  const dd = document.getElementById("dropdown");
+  if (!stocks.length) {
+    dd.innerHTML = `<div style="padding:12px;color:var(--text-dim);font-size:0.82rem;">No results</div>`;
+    dd.classList.add("open"); return;
+  }
+  const groups = {};
+  stocks.forEach(s => { if (!groups[s.index]) groups[s.index] = []; groups[s.index].push(s); });
+  const order = ["INDEX","NIFTY 50","NIFTY NEXT 50","NIFTY MIDCAP"];
+  let html = "";
+  order.forEach(idx => {
+    if (!groups[idx]) return;
+    html += `<div class="group-hdr">${idx}</div>`;
+    groups[idx].forEach(s => {
+      html += `<div class="drop-item" onclick="selectStock('${s.symbol}','${s.name.replace(/'/g,"\\'")}','${s.sector}','${s.index}')">
+        <span class="drop-name">${s.name}</span>
+        <span class="drop-sym">${s.symbol}</span>
+      </div>`;
+    });
+  });
+  dd.innerHTML = html;
+  dd.classList.add("open");
+}
+
+function selectStock(symbol, name, sector, index) {
+  selectedSymbol = symbol;
+  selectedName   = name;
+  document.getElementById("stockSearch").value = `${name}`;
+  document.getElementById("dropdown").classList.remove("open");
+  document.getElementById("selSym").textContent    = symbol;
+  document.getElementById("selName").textContent   = name;
+  document.getElementById("selSector").textContent = sector;
+  document.getElementById("selIndex").textContent  = index;
+  document.getElementById("selCard").classList.add("show");
+  // Clear results
+  ["overview-content","predict-content","backtest-content","download-content","compare-content"]
+    .forEach(id => document.getElementById(id).innerHTML = "");
+}
+
+document.getElementById("stockSearch").addEventListener("input", function() {
+  const q = this.value.trim().toLowerCase();
+  const filtered = q
+    ? allStocks.filter(s => s.name.toLowerCase().includes(q) || s.symbol.toLowerCase().includes(q) || s.sector.toLowerCase().includes(q))
+    : allStocks;
+  renderDropdown(filtered);
+});
+document.getElementById("stockSearch").addEventListener("focus", function() {
+  const q = this.value.trim().toLowerCase();
+  renderDropdown(q ? allStocks.filter(s => s.name.toLowerCase().includes(q) || s.symbol.toLowerCase().includes(q)) : allStocks);
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest(".search-wrap")) document.getElementById("dropdown").classList.remove("open");
+});
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  const names = ["overview","chart","predict","backtest","compare","download"];
+  document.querySelectorAll(".tab").forEach((t,i) => t.classList.toggle("active", names[i]===name));
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.getElementById("tab-"+name).classList.add("active");
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function getSymbol() {
+  if (!selectedSymbol) { alert("Please select a stock first."); return null; }
+  return selectedSymbol;
+}
+
+function verdictClass(v) {
+  const u = String(v).toUpperCase();
+  if (u.includes("BUY") || u==="UP" || u==="BULLISH" || u==="HIGH") return "green";
+  if (u.includes("SELL") || u==="DOWN" || u==="BEARISH")            return "red";
+  return "gold";
+}
+
+async function apiFetch(url, method) {
+  const res  = await fetch(BASE + url, { method: method||"GET" });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+  return data;
+}
+
+// ── Overview / Analysis ───────────────────────────────────────────────────────
+async function runAnalysis() {
+  const sym = getSymbol(); if (!sym) return;
+  const el  = document.getElementById("overview-content");
+  el.innerHTML = `<p class="loading-msg">Analysing ${sym}…</p>`;
+  try {
+    const d = await apiFetch(`/analysis/${sym}`);
+    const vc = verdictClass(d.recommendation);
+
+    const w52pct = d.week52
+      ? Math.min(100, Math.max(0, ((d.price - d.week52.low) / (d.week52.high - d.week52.low)) * 100))
+      : 50;
+
+    el.innerHTML = `
+      <!-- Verdict banner -->
+      <div class="verdict-box ${vc}" style="margin-bottom:16px;">
+        <div>
+          <div style="font-size:0.68rem;color:var(--text-dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;">AI Analyst Verdict</div>
+          <div class="verdict-big ${vc}">${d.analyst_summary?.verdict || d.recommendation}</div>
+          <div style="font-size:0.78rem;color:var(--text-dim);margin-top:4px;">Score: ${d.analyst_summary?.score || "—"}</div>
+        </div>
+        <ul class="signals-list">
+          ${(d.analyst_summary?.signals||[]).map(s=>`<li>${s}</li>`).join("")}
+        </ul>
+      </div>
+
+      <!-- Stat tiles -->
+      <div class="grid3" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="card-title">Current Price</div>
+          <div class="stat-val">₹${d.price}</div>
+          <div class="stat-sub"><span class="badge ${verdictClass(d.trend)}">${d.trend}</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">RSI (14)</div>
+          <div class="stat-val">${d.indicators.RSI}</div>
+          <div class="stat-sub">${d.indicators.RSI < 30 ? "Oversold" : d.indicators.RSI > 70 ? "Overbought" : "Neutral"}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Recommendation</div>
+          <div class="stat-val"><span class="badge ${vc}">${d.recommendation}</span></div>
+          <div class="stat-sub">Based on 5 indicators</div>
+        </div>
+      </div>
+
+      <!-- 52 Week Range -->
+      ${d.week52 ? `
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-title">52-Week Range</div>
+        <div style="display:flex;justify-content:space-between;font-size:0.8rem;margin-bottom:6px;">
+          <span style="color:var(--red);">Low ₹${d.week52.low}</span>
+          <span style="color:var(--text-dim);">Current ₹${d.price}</span>
+          <span style="color:var(--green);">High ₹${d.week52.high}</span>
+        </div>
+        <div class="week52-bar">
+          <div class="week52-fill" style="width:${w52pct}%"></div>
+          <div class="week52-marker" style="left:${w52pct}%"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-dim);margin-top:6px;">
+          <span>From low: ${d.week52.pct_from_low}</span>
+          <span>From high: ${d.week52.pct_from_high}</span>
+        </div>
+      </div>` : ""}
+
+      <!-- Indicators & MACD -->
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Technical Indicators</div>
+          <table class="kv">
+            <tr><td>MA 20</td><td>₹${d.indicators.MA_20}</td></tr>
+            <tr><td>MA 50</td><td>₹${d.indicators.MA_50}</td></tr>
+            <tr><td>BB Upper</td><td>₹${d.indicators.Bollinger_Bands?.upper}</td></tr>
+            <tr><td>BB Middle</td><td>₹${d.indicators.Bollinger_Bands?.middle}</td></tr>
+            <tr><td>BB Lower</td><td>₹${d.indicators.Bollinger_Bands?.lower}</td></tr>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">MACD</div>
+          <table class="kv">
+            <tr><td>MACD Line</td><td>${d.indicators.MACD?.macd}</td></tr>
+            <tr><td>Signal Line</td><td>${d.indicators.MACD?.signal}</td></tr>
+            <tr><td>Histogram</td><td>${d.indicators.MACD?.histogram}</td></tr>
+          </table>
+        </div>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+async function runChart() {
+  const sym  = getSymbol(); if (!sym) return;
+  const days = document.getElementById("chartDays").value;
+  try {
+    const data = await apiFetch(`/data/chart/${sym}?days=${days}`);
+    const labels = data.map(d => d.date);
+    const closes = data.map(d => d.close);
+    const ma20   = data.map(d => d.ma20);
+    const ma50   = data.map(d => d.ma50);
+
+    if (chartInstance) chartInstance.destroy();
+
+    const ctx = document.getElementById("priceChart").getContext("2d");
+    chartInstance = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: sym,
+            data: closes,
+            borderColor: "#00e8a0",
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.3,
+            fill: true,
+            backgroundColor: "rgba(0,232,160,0.05)",
+          },
+          {
+            label: "MA 20",
+            data: ma20,
+            borderColor: "#4d9fff",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3,
+            borderDash: [4, 4],
+          },
+          {
+            label: "MA 50",
+            data: ma50,
+            borderColor: "#ffc847",
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3,
+            borderDash: [4, 4],
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { intersect: false, mode: "index" },
+        plugins: {
+          legend: { labels: { color: "#c8d6e8", font: { size: 11 } } },
+          tooltip: { backgroundColor: "#0e1420", borderColor: "#1a2235", borderWidth: 1 },
+        },
+        scales: {
+          x: {
+            ticks: { color: "#4a5568", maxTicksLimit: 8, font: { size: 10 } },
+            grid:  { color: "#1a2235" },
+          },
+          y: {
+            ticks: { color: "#4a5568", font: { size: 10 }, callback: v => "₹" + v.toLocaleString("en-IN") },
+            grid:  { color: "#1a2235" },
+          },
+        },
+      },
+    });
+  } catch(e) {
+    document.querySelector(".chart-wrap").innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Predict ───────────────────────────────────────────────────────────────────
+async function runPredict() {
+  const sym = getSymbol(); if (!sym) return;
+  const el  = document.getElementById("predict-content");
+  el.innerHTML = `<p class="loading-msg">Running ML model…</p>`;
+  try {
+    const d  = await apiFetch(`/ml/predict/${sym}`);
+    const vc = verdictClass(d.prediction);
+    el.innerHTML = `
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Tomorrow's Direction</div>
+          <div class="stat-val" style="margin:12px 0;"><span class="badge ${vc}" style="font-size:1.1rem;padding:6px 20px;">${d.prediction}</span></div>
+          <div class="stat-sub">Conviction: <span class="badge ${verdictClass(d.conviction)}">${d.conviction||"—"}</span></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Probability Breakdown</div>
+          <table class="kv">
+            <tr><td>Confidence</td><td>${d.confidence}</td></tr>
+            <tr><td>Prob UP</td><td>${d.prob_up||"—"}</td></tr>
+            <tr><td>Prob DOWN</td><td>${d.prob_down||"—"}</td></tr>
+          </table>
+          <div style="margin-top:10px;font-size:0.72rem;color:var(--text-dim);">
+            Ensemble model: Random Forest + Gradient Boosting + Logistic Regression
+          </div>
+        </div>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Backtest ──────────────────────────────────────────────────────────────────
+async function runBacktest() {
+  const sym = getSymbol(); if (!sym) return;
+  const cap = document.getElementById("cap-b").value;
+  const el  = document.getElementById("backtest-content");
+  el.innerHTML = `<p class="loading-msg">Running backtest…</p>`;
+  try {
+    const d   = await apiFetch(`/backtest/${sym}?capital=${cap}`);
+    const avc = verdictClass(d.alpha_pct >= 0 ? "BUY" : "SELL");
+    el.innerHTML = `
+      <div class="grid3" style="margin-bottom:16px;">
+        <div class="card">
+          <div class="card-title">Final Portfolio Value</div>
+          <div class="stat-val">₹${d.final_value?.toLocaleString("en-IN")}</div>
+          <div class="stat-sub">Started with ₹${d.initial_capital?.toLocaleString("en-IN")}</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Strategy Return</div>
+          <div class="stat-val" style="color:${d.strategy_return_pct>=0?'var(--green)':'var(--red)'}">
+            ${d.strategy_return_pct >= 0 ? "+" : ""}${d.strategy_return_pct}%
+          </div>
+          <div class="stat-sub">Buy & Hold: ${d.buy_hold_return_pct}%</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Alpha</div>
+          <div class="stat-val" style="color:${d.alpha_pct>=0?'var(--green)':'var(--red)'}">
+            ${d.alpha_pct >= 0 ? "+" : ""}${d.alpha_pct}%
+          </div>
+          <div class="stat-sub">vs Buy & Hold</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Risk Metrics</div>
+        <table class="kv">
+          <tr><td>Sharpe Ratio</td><td>${d.sharpe_ratio}</td></tr>
+          <tr><td>Max Drawdown</td><td>${d.max_drawdown_pct}%</td></tr>
+          <tr><td>Prediction Accuracy</td><td>${d.prediction_accuracy}%</td></tr>
+          <tr><td>Backtest Days</td><td>${d.backtest_days}</td></tr>
+        </table>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Compare ───────────────────────────────────────────────────────────────────
+async function runCompare() {
+  const s1 = document.getElementById("cmp1").value.trim();
+  const s2 = document.getElementById("cmp2").value.trim();
+  if (!s1 || !s2) { alert("Enter both symbols"); return; }
+  const el = document.getElementById("compare-content");
+  el.innerHTML = `<p class="loading-msg">Comparing ${s1} vs ${s2}…</p>`;
+  try {
+    const d = await apiFetch(`/compare?symbol1=${s1}&symbol2=${s2}`);
+    const r1 = d.stock1, r2 = d.stock2;
+
+    function col(s) {
+      return `<div class="card">
+        <div class="card-title">${s.symbol}</div>
+        <div style="margin-bottom:10px;"><span class="badge ${verdictClass(s.recommendation)}">${s.recommendation}</span></div>
+        <table class="kv">
+          <tr><td>Price</td><td>₹${s.price}</td></tr>
+          <tr><td>Trend</td><td><span class="badge ${verdictClass(s.trend)}">${s.trend}</span></td></tr>
+          <tr><td>RSI</td><td>${s.indicators?.RSI}</td></tr>
+          <tr><td>MA 20</td><td>₹${s.indicators?.MA_20}</td></tr>
+          <tr><td>MA 50</td><td>₹${s.indicators?.MA_50}</td></tr>
+          <tr><td>MACD</td><td>${s.indicators?.MACD?.macd}</td></tr>
+          <tr><td>52W High</td><td>₹${s.week52?.high||"—"}</td></tr>
+          <tr><td>52W Low</td><td>₹${s.week52?.low||"—"}</td></tr>
+        </table>
+      </div>`;
+    }
+
+    el.innerHTML = `<div class="compare-grid">${col(r1)}${col(r2)}</div>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Download & Train ──────────────────────────────────────────────────────────
+async function runDownload() {
+  const sym = getSymbol(); if (!sym) return;
+  const per = document.getElementById("per-d").value;
+  const el  = document.getElementById("download-content");
+  el.innerHTML = `<p class="loading-msg">Downloading ${sym} data…</p>`;
+  try {
+    const d = await apiFetch(`/data/download/${sym}?period=${per}`, "POST");
+    el.innerHTML = `<p style="color:var(--green);">✓ ${d.message}</p>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+async function runTrain() {
+  const sym = getSymbol(); if (!sym) return;
+  const el  = document.getElementById("download-content");
+  el.innerHTML = `<p class="loading-msg">Training model on ${sym}… (this takes ~30 seconds)</p>`;
+  try {
+    const d = await apiFetch(`/ml/train/${sym}`, "POST");
+    el.innerHTML = `<p style="color:var(--green);">✓ ${d.message}  —  Accuracy: ${(d.accuracy*100).toFixed(1)}%</p>`;
+  } catch(e) {
+    el.innerHTML = `<p class="err">Error: ${e.message}</p>`;
+  }
+}
+
+// ── Watchlist ─────────────────────────────────────────────────────────────────
+async function loadWatchlist() {
+  try {
+    const wl = await apiFetch("/watchlist");
+    renderWatchlist(wl);
+  } catch(e) {}
+}
+
+function renderWatchlist(wl) {
+  const el = document.getElementById("wlList");
+  if (!wl.length) { el.innerHTML = `<div class="wl-empty">No stocks added yet</div>`; return; }
+  el.innerHTML = wl.map(s => `
+    <div class="wl-item ${s.symbol===selectedSymbol?'active':''}" onclick="selectFromWatchlist('${s.symbol}','${s.name.replace(/'/g,"\\'")}')">
+      <div>
+        <div class="wl-sym">${s.symbol}</div>
+        <div style="font-size:0.72rem;color:var(--text-dim);">${s.name}</div>
+      </div>
+      <span class="wl-del" onclick="removeWatchlist(event,'${s.symbol}')">✕</span>
+    </div>`).join("");
+}
+
+async function addToWatchlist() {
+  if (!selectedSymbol) { alert("Select a stock first"); return; }
+  try {
+    await apiFetch(`/watchlist/${selectedSymbol}?name=${encodeURIComponent(selectedName)}`, "POST");
+    loadWatchlist();
+  } catch(e) {}
+}
+
+async function removeWatchlist(e, symbol) {
+  e.stopPropagation();
+  try {
+    await apiFetch(`/watchlist/${symbol}`, "DELETE");
+    loadWatchlist();
+  } catch(e) {}
+}
+
+function selectFromWatchlist(symbol, name) {
+  const stock = allStocks.find(s => s.symbol === symbol);
+  if (stock) selectStock(stock.symbol, stock.name, stock.sector, stock.index);
+  else selectStock(symbol, name, "", "");
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadStocks();
+loadWatchlist();
+</script>
+</body>
+</html>
